@@ -1,0 +1,152 @@
+---
+title: "Homework 2"
+subtitle: "BIOST 561: Computational Skills for Biostatistics I"
+author: "Students: Sirui Liu and Yichen Lu"
+date: "Spring 2020"
+urlcolor: blue
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=FALSE)
+```
+
+
+# Problem 1: environments and the search path
+
+Let us say thay you have a list (e.g., a data frame) with lots of objects that you keep using.  You can attach a copy of that list to the search path so that you can directly access copies of those objects by their name.  
+```{r, eval=TRUE}
+rm(list = ls())
+
+# just to illustrate, create a copy of the iris dataset in the global environment
+iris <- iris 
+head(iris$Sepal.Length) # this is how we typically access the individual columns
+attach(iris) # if we attach a copy of the data frame to the search path
+head(Sepal.Length) # now we can access copies of the columns directly 
+Sepal.Length <- Sepal.Length + 0 # and we can run operations with them
+```
+
+## Problem 1.1
+
+What is the last line in the code above doing?  Are the two ```Sepal.Length``` in that line of code in the same environment?  Are we overwriting anything?
+
+### Answer
+It finds the variable ```Sepal.Length``` in the ```iris``` dataset and create a copy of it in the global environment and add 0 to it. The two ```Sepal.Length``` in that line of code are in different environments: the left one is in the gloval environment while the second is in the new enviornment created when the dataset is attached. We are only overwriting the Sepal.Length in the global environment but not in the  ```iris``` dataset.
+```{r, eval=TRUE, include = FALSE}
+ls() #iris, Sepal.Length are in the global environment
+search() #iris is now in part of the search parth
+parent.env(environment()) #iris is now the parent environment (when attached, a new environment is created and the elements are *copied* into this new environment)
+identical(Sepal.Length, get("Sepal.Length", pos="iris"))
+
+Sepal.Length <- Sepal.Length * 100
+iris$Sepal.Length 
+```
+
+## Problem 1.2
+After running the code above, execute the following lines of code, and explain where each of the retrieved objects is coming from.
+```{r, eval=FALSE}
+Sepal.Length 
+iris$Sepal.Length 
+get("Sepal.Length", pos="iris")
+get("iris", pos="package:datasets")$Sepal.Length
+datasets::iris$Sepal.Length # hint: see help("::")
+```
+
+### Answer
+1. ```Sepal.Length``` in the global environment (output the first ```Sepal.Length``` found in the search path)
+2. ```Sepal.Length``` in ```Sepal.Length``` in global environment
+3. outputs ```Sepal.Length``` if found in ```iris`` in search path
+4. outputs ```Sepal.Length```  from ```iris``` found in ```package:datasets``` in search path
+5. outputs ```Sepal.Length```  from ```iris``` found in ```package:datasets``` in search path (same as 4)
+
+## Problem 1.3 
+Mention some risks and advantages of attaching lists (e.g. data frames) to the search path.  Use the example in the problems above to illustrate.  
+
+### Answer
+Pro is that after attaching the dataset to the search path, we can access them and their elements directly by their name.
+
+But the con is this can cause possibility of overwriting variables when we do not specify or understand clearly whether we want to call/manipualte the variable/element in the initial data attached or in the global environment. 
+
+## Problem 1.4 
+Let us run the line we usually start with
+```{r, eval=FALSE}
+rm(list = ls())
+```
+Why can we still access object ```Sepal.Length``` when we type this name in the console?
+
+
+### Answer
+Although ```Sepal.Length``` in the global environment is removed, when it
+s called, R can still finds the ```Sepal.Length``` in ```iris`` which is still in the search path.
+
+## Problem 1.5
+When you load an R package, where is its environment added in the search path?
+
+### Answer
+It's added as the parent environment of the global environment. 
+
+
+
+# Problem 2: the with() and within() functions
+
+These are used to evaluate an R expression in an environment constructed from data. Example from ```?with```:
+```{r, eval=TRUE, fig.height = 3, fig.width = 5, fig.align = "center"}
+library(MASS)
+head(anorexia)
+plot(anorexia$Prewt, anorexia$Postwt, col=anorexia$Treat) # too much typing
+```
+We could attach ```anorexia``` to the search path, but we know this can be a bad idea.
+Instead, use the ```with``` function:
+```{r, eval=TRUE, fig.height = 3, fig.width = 5, fig.align = "center"}
+with(anorexia, plot(Prewt, Postwt, col=Treat))
+```
+You can also run multiple lines of code
+```{r, eval=TRUE, fig.height = 3, fig.width = 5, fig.align = "center"}
+with(anorexia, {
+  perc_change <- 100*(Postwt-Prewt)/Prewt
+  plot(Prewt, perc_change, col=Treat) 
+  cor(Prewt, perc_change)
+})
+```
+Also, the closely related ```within``` function is used for modifying a list or data frame
+```{r, eval=TRUE}
+anorexia2 <- within(anorexia, {
+  perc_change <- round(100*(Postwt-Prewt)/Prewt, 3)
+})
+head(anorexia,2)
+head(anorexia2,2)
+```
+
+
+Now you will use the data frame ```anorexia``` and the functions ```with``` and ```within``` to do the following.
+
+## Problem 2.1
+Create histograms of ```Prewt``` and ```Postwt``` displayed side by side.
+    Make both histograms share the same range in the x axis. 
+    Compute this range from the range of ```c(Prewt,Postwt)```.
+
+### Answer
+```{r, eval=TRUE, fig.height = 3, fig.width = 5, fig.align = "center"}
+par(mfrow = c(1,2))
+with(anorexia, hist(Prewt,  xlim = with(anorexia, range(c(Prewt,Postwt)))))
+with(anorexia, hist(Postwt, xlim = with(anorexia, range(c(Prewt,Postwt)))))
+```
+
+
+
+## Problem 2.2
+Create a data frame ```anorexia3``` where ```Prewt``` and ```Postwt``` are 
+    rounded to the closest integer, it includes an indicator column
+    for cases that gained more than 10% in weight, and another 
+    indicator column for cases that lost more than 10% in weight.
+    
+### Answer
+    ```{r, eval=TRUE}
+anorexia3 <- within(anorexia, {
+  gain_a_lot <- ((Postwt - Prewt) / Prewt > 0.1) 
+  lost_a_lot <- ((Prewt - Postwt) / Prewt > 0.1) 
+  Postwt <- round(Postwt, 0)
+  Prewt <- round(Prewt, 0)
+})
+head(anorexia3,2)
+```

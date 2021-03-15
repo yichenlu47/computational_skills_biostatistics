@@ -1,0 +1,138 @@
+---
+title: "Homework 3"
+subtitle: "BIOST 561: Computational Skills for Biostatistics I"
+author: "Students: Joanna Xiao, Sirui Liu, Yichen Lu"
+date: "Spring 2020"
+urlcolor: blue
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval=TRUE)
+library(stringr)
+library(dplyr)
+library(igraph)
+
+# install.packages('igraph', lib='/home/students/yl002013/RRR/R_lib', repos='http://cran.us.r-project.org')
+# install.packages('stringr', lib='/home/students/yl002013/RRR/R_lib', repos='http://cran.us.r-project.org')
+
+# library(dplyr, lib.loc=c(.libPaths(),'/home/students/yl002013/RRR/R_lib'))
+# library(data.table , lib.loc=c(.libPaths(),'/home/students/yl002013/RRR/R_lib'))
+# library(glmnet , lib.loc=c(.libPaths(),'/home/students/yl002013/RRR/R_lib'))
+# library(parallel , lib.loc=c(.libPaths(),'/home/students/yl002013/RRR/R_lib'))
+
+
+rm(list = ls())
+source("/Users/Yichen/Google Drive/UW Seattle/BIOST 561 Computational Skills For Biostatistics I/Lecture4_post.R")
+# source("/home/students/yl002013/RRR/Lecture4_post.R")
+```
+
+## Problem 1
+
+The list of authors ```authors_roster``` obtained in class seems to have lots of duplicates.
+For example:
+```{r}
+grep("Heagerty", authors_roster, value=TRUE)
+```
+It seems that a halfway decent strategy to remove duplicates is to leave the last name and the initial of the first name, e.g. transform ```"Heagerty PJ"``` and ```"Heagerty PJ "``` into ```"Heagerty P"```.  Your goal is to do this for all names in ```authors_roster``` and then remove the exact duplicates.  (Caveat: this approach would collapse, for example, Ryan J. Tibshirani and Rob Tibshirani into a single author, if they appeared in this list).  Avoid using `for` loops in your solution.
+
+### Answer: The final list contains the 808 authors.
+```{r}
+complete_authors<-Reduce(union_all, authors)
+t1 <- strsplit(complete_authors, split = " ") 
+t2 <- t(as.data.frame(lapply(t1, "length<-", max(lengths(t1)))))
+
+#check the length
+t3 <- as.data.frame(unlist(lapply(t1, function(i) length(i))))
+colnames(t3) <- "l"
+t4 <- cbind(t3, t2)
+rownames(t4) <- NULL
+
+#entries with normal length
+t6 <- t4[t4$l == 2,]
+t6$last <- str_sub(t6$`2`, 1, 1) #extract first letter of last name
+t6$first <- t6$`1`
+tt6 <- paste(t6$first, t6$last)
+
+#entries with weird length
+w <- nrow(t4[t4$l != 2,]) 
+
+#exclude false entries
+t_exclude <- t4[t4$l <= 1 |t4$l > 4,] 
+
+#update the name for individual case
+T1 <- t4[t4$l == 3,] 
+T2 <- T1[T1$`3` != "Development", ]
+T2$first <- ifelse(T2$`1` == "and", "deBoer", paste0(T2$`1`, T2$`2`))
+T2$last <- T2$`3`
+TT2 <- paste(T2$first, T2$last)
+
+#combine all the clean entries
+new_authors_roster <- c(tt6, TT2)
+authors_roster_unique <-unique(new_authors_roster)
+length(authors_roster_unique)
+```
+
+
+## Problem 2
+For each author in your new ```authors_roster```, compute the number of times that s/he has been a coauthor of ```"Heagerty P"```.  Present this information in a graph. Avoid using `for` loops in your solution.
+
+### Answer: The barplot shows the 20 most common coauthors.
+```{r}
+name_num<-table(new_authors_roster)
+name_num<-sort(name_num,decreasing = TRUE) 
+barplot(name_num[seq(from=2,to=20,by=1)],las=2)
+```
+
+## Problem 3
+
+Obtain the list of journals in which ```"Heagerty P"``` has published, and the corresponding numbers of times.  Present this information in a graph.  Avoid using `for` loops in your solution.
+
+### Answer: The barplot shows the 20 most common journals.
+```{r}
+pub_list<-grep("<i>.*</i>", pub_webpage, value=TRUE) 
+jn_list<- str_match(pub_list, "<i>(.*?)</i>")
+jn_list<-jn_list[,2]
+jn_num<-table(jn_list)
+jn_num<-sort(jn_num,decreasing = TRUE)
+barplot(jn_num[seq(from=1,to=20,by=1)],las=2)
+```
+
+## Problem 4
+
+For each pair of authors in your new ```authors_roster``` (except for ```"Heagerty P"```), compute the number of times that they have been jointly coauthors of ```"Heagerty P"```.  Plot this information as a network whose edges have width proportional to the number of joint coauthorships.  For this plot I recommend using the R package ```igraph```.  Note: a matrix containing mostly zeroes may be more efficiently stored as a list with the indices and the values of the non-zero entries; this stackoverflow post might be useful: https://stackoverflow.com/questions/46977769/weighted-edgelist-into-directed-and-undirected-graph-in-r.   Avoid using `for` loops in your solution.
+
+### Answer: Pair of authors who have jointly been coauthors for more than or equal to 4 times have been ploted below. The width of edges in the network plot is proportional to the number of joint coauthorships. 
+```{r, eval = FALSE}
+#remove patrick from the authors list
+coauthors_roster_unique = authors_roster_unique[authors_roster_unique != "Heagerty P"]
+
+x.coauthor.list <- lapply(1:length(coauthors_roster_unique), function(i){
+
+  x <- coauthors_roster_unique[i]
+  #entries in authors that contain the coauthor A
+  x.coauthor.paper.index <- sapply(x, function(j) grep(j, authors))
+  
+  #for all other coauthors, count the number of time they coauthor with coauthor A
+  x.coauthor.paper.n <- sapply(coauthors_roster_unique, function(k){
+    if (lapply(x.coauthor.paper.index, sum) == 0) 0
+    else length(grep(k, authors[x.coauthor.paper.index]))})
+  
+  #remove coauthors who never collaborate with coauthor A and the coauthor himself
+  x.coauthor.count <- x.coauthor.paper.n[x.coauthor.paper.n != 0]
+  #combine them into a data frame
+  as.data.frame(cbind("from" = rep(x, length(x.coauthor.count)), 
+        "to" = rownames(as.data.frame(x.coauthor.count)), 
+        "weight" = x.coauthor.count))
+})
+x.coauthor = as.data.frame(do.call(rbind, x.coauthor.list))
+x.coauthor$"weight" <- as.numeric(as.character(x.coauthor$"weight"))
+x.coauthor$"from" <- as.character(x.coauthor$"from")
+x.coauthor$"to" <- as.character(x.coauthor$"to")
+x.coauthor1 <- x.coauthor[x.coauthor$weight >= 4 & x.coauthor$from != x.coauthor$to,]
+#plot the graph
+directed_graph_wgt <- graph.data.frame(x.coauthor1, directed = FALSE)
+undirected_graph_wgt <- as.undirected(directed_graph_wgt, mode = "collapse", edge.attr.comb = "sum")
+plot(undirected_graph_wgt, layout = layout_randomly(undirected_graph_wgt), edge.width = E(undirected_graph_wgt)$weight/10, vertex.label.cex = 0.7, vertex.size = 10)
+```
+

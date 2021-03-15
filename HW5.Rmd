@@ -1,0 +1,298 @@
+---
+title: "Homework 5"
+subtitle: "BIOST 561: Computational Skills for Biostatistics I"
+author: "Students: Ziyu Xiao, Yichen Lu & Sirui Liu"
+date: "Spring 2020"
+urlcolor: blue
+output: pdf_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=FALSE)
+theta1=2
+n=100
+theta0=1
+```
+
+Submit your solutions via Canvas before 6:00pm on Wednesday May 13 2020.  Work in groups of two or three people to prepare your solutions.  Note that on Canvas there are some initial groups, called 'Homework 5 Groups,' but you should feel free to modify these if you prefer another group configuration.   
+
+## Format for solutions
+
+Submit your solutions as a pdf prepared using [RMarkdown](https://rmarkdown.rstudio.com/).  The source .Rmd file for this pdf is available on Canvas in case you want to use it as the basis for your solutions. 
+
+# Preliminaries
+
+In this homework, we'll practice debugging, profiling and microbenchmarking in the context
+ of a simulation study to compute the power of a test.
+
+## Hypothesis testing for odds ratios
+
+Consider two random variables $X$ and $Y$, each taking values in $\{1, 2\}$.  The dependence between $X$ and $Y$ can be characterized by the odds ratio
+\[\theta=\frac{\pi_{11}\pi_{22}}{\pi_{12}\pi_{21}},\]
+where $\pi_{ij}=P(X=i,Y=j)$, $i,j=1,2$.  Say we have $n$ draws from their joint distribution.  Let $n_{ij}$ be the number of draws where $X=i$ and $Y=j$.  An approach for estimating $\theta$ is to use 
+\[\hat\theta_c=\frac{(n_{11}+c)(n_{22}+c)}{(n_{12}+c)(n_{21}+c)},\]
+for some constant $c\geq 0$ seen as a small pseudo-count added to each $n_{ij}$ ([Agresti, Biometrics, 1999](https://www.jstor.org/stable/2533812?seq=1#page_scan_tab_contents)).  The delta method can be used to show that $\log \hat\theta_c$ is asymptotically normal with mean $\log \theta$ and standard deviation that can be estimated by 
+\[\hat\sigma(\log \hat \theta_c)=\sqrt{\sum_{i,j}(n_{ij}+c)^{-1}}.\]
+Agresti ([Biometrics, 1999](https://www.jstor.org/stable/2533812?seq=1#page_scan_tab_contents)) studied the empirical performance of confidence intervals (CIs) for $\theta$ obtained from exponentiating the end-points of 
+\[\log \hat \theta_c \pm z_{\alpha/2}\hat\sigma(\log \hat \theta_c),\]
+and he showed that such CIs for some choices of $c$ perform pretty well even with small sample sizes, meaning that their empirical coverage is close to the nominal $(1-\alpha)100\%$. 
+
+We can use these approximate CIs to define approximate $\alpha$-level hypothesis tests, as follows:
+\[\text{Reject } H_0: \theta=\theta_0 ~~ \text{ iff } ~~ \log\theta_0 \notin (\log \hat \theta_c - z_{\alpha/2}\hat\sigma(\log \hat \theta_c), \log \hat \theta_c + z_{\alpha/2}\hat\sigma(\log \hat \theta_c)).\]
+
+Let us say that we want to study the power of such tests.  To do so we need to specify: 
+
+- A value of $\theta$ under an alternative hypothesis, say $H_1:\theta=\theta_1$.
+
+- A sample size $n$.
+
+- A nominal $\alpha$ significance level.
+
+- A distribution of $(X,Y)$ with odds ratio equal to $\theta_1$.
+
+For the latter point, we can derive all the $\pi_{ij}$'s from $\theta_1$, $\pi_{1+}=P(X=1)$ and $\pi_{+1}=P(Y=1)$.  We can compute $\pi_{11}$ as 
+\[\pi_{11}=\frac{1+(\pi_{1+}+\pi_{+1})(\theta-1)-A}{2(\theta-1)},\]
+where 
+\[A=\sqrt{(1+(\pi_{1+}+\pi_{+1})(\theta-1))^2+4\theta(1-\theta)\pi_{1+}\pi_{+1}},\]
+provided that $\theta\neq 1$.  If $\theta=1$ we have $\pi_{11}=\pi_{1+}\pi_{+1}$.  Naturally, $\pi_{12}=\pi_{1+}-\pi_{11}$, $\pi_{21}=\pi_{+1}-\pi_{11}$, and $\pi_{22}=1-\pi_{11}-\pi_{12}-\pi_{21}$.
+
+
+Let $R_c$ be an indicator that equals 1 if a test based on one of the aforementioned CIs rejects $H_0$.  The power of the test is then $P^*(R_c=1)$, where $P^*$ is the implied distribution of $R_c$ under a combination of $\theta_1, n, \alpha$, and $\pi_{1+}$ and $\pi_{+1}$.  
+
+
+## The code to be fixed 
+
+Now, here I'm giving you some code to compute the power of hypothesis tests for odds ratios. Unfortunately, my code has (at least) one bug and is inefficient.  Since you learned how to debug and profile code, I trust you can help me make my code work and run more efficiently.
+
+These are the parameters that we need to set in the power calculation:
+
+- `theta0` : odds ratio in null hypothesis
+
+- `theta1` : odds ratio in alternative hypothesis
+
+- `n` : sample size
+
+- `alpha` : significance level
+
+- `pX1` : $P(X=1)$
+
+- `pY1` : $P(Y=1)$
+
+The function `joint_probs` computes the probabilities $P(X=i,Y=j)$ from
+a given odds ratio `theta` and the marginal probabilities `pX1` and `pY1`.
+```{r, eval=TRUE}
+joint_probs <- function(theta, pX1, pY1){
+  if(theta==1){ 
+    p11 <- pX1*pY1
+  }else{
+    temp <- 1 + (pX1 + pY1)*(theta - 1)
+    A <- sqrt(temp^2 + 4*theta*(1 - theta)*pX1*pY1)
+    p11 <- (temp-A)/(2*(theta - 1))
+  }
+  c(p11=p11, p12=pX1-p11, p21=pY1-p11, p22=1-pX1-pY1+p11)
+}
+
+joint_probs(1.5, .1, .9)
+```
+
+`OR_CI` computes the confidence interval described above based on a vector `counts`, which is a numeric vector of length 4 with entries $(n_{11}, n_{12}, n_{21}, n_{22})$, a nominal significance level `alpha` and a small count `c0`
+```{r, eval=TRUE}
+OR_CI <- function(counts, alpha=0.05, c0=0.5){
+  counts <- counts + c0
+  sd <- sqrt(sum(1/counts))
+  logOR <- log(counts[1]*counts[4]/(counts[2]*counts[3]))
+  #logOR <- sum(log(counts[c(1,4)]-counts[2:3])) previous command
+  z <- qnorm(1-alpha/2)
+  exp(c(logOR-z*sd, logOR+z*sd))
+}
+
+OR_CI(c(20,10,3,5))
+```
+
+The function `OR_power` uses a Monte Carlo simulation to approximate $P^*(R_c=1)$.  The input parameters are as described before, and `nsim` is number of repetitions of Monte Carlo simulation
+
+```{r,eval=TRUE}
+OR_power <- function(theta1, n, theta0=1, alpha=.05, pX1=.5, pY1=.5, nsim=1000, c0=0.5){
+  R_c <- numeric(0) 
+# returns a vector that is empty c(); this is an initialization step
+# Power is the probability of rejecting the null hypothesis under the null is false
+
+  for(i in 1:nsim){ # repeat the process/simulation below ‘nsim’ times
+    CI <- OR_CI(rmultinom(1,size=n,prob=joint_probs(theta1,pX1,pY1)), alpha, c0)
+# to generate multinomially distributed random number vectors under the alternative hypothesis 
+# size=n means we have n draws 
+# 'OR_CI' calculates the 95%CI under the alternative hypothesis and given c0
+    if(theta0 < CI[1] || theta0 > CI[2]){
+      R_c <- c(R_c, 1) 
+# record it as '1' in the R_c vector if we reject the null hypothesis (outside 95% CI)
+    }else{
+      R_c <- c(R_c, 0) 
+# if we do not reject the null, it will be recorded as '0'
+    }
+  }
+  mean(R_c) 
+}
+# after 'nsim' times experiment,we get a vector 'R_c' that consists of either 0 or 1
+# 'mean(R_c)' is the number of '1' divided by 'nsim' (a proportion). 
+# Here, it is also considered as propablity. 
+# Finally, this is the result of power after MC simulation.
+
+
+OR_power(theta1=2, n=100, theta0=1) 
+ # an example of calculating power.
+# we assumes theta1 is 2, theta0 is 1, and n is 100 draws
+```
+
+
+## Problem 1
+
+Find the bug that is causing the error in `OR_power` using the different tools that we covered in Lecture 6.  Summarize the approach that you took.
+
+Since `OR_power` fails, the prompt is 'NaNs producedError in if (theta0 < CI[1] || theta0 > CI[2])'.
+The first step, `debug(OR_power)` and then rerun `OR_power(theta1=2, n=100, theta0=1)`. Next, we are in the browser mode. By hitting the $Enter$, we run very command step by step. Since `OR_power` uses another two functions `OR_CI` and `joint_probs`, we rerun `OR_CI(rmultinom(1,size=n,prob=joint_probs(theta1,pX1,pY1)), alpha, c0)` in the current environment, and find out that NaNs produced. Therefore, `OR_CI` is the one that causes problem. 
+Then, we hit $s$, and step into function `OR_CI`. We check the object one by one and find out that the object `logOR` computes the wrong number. At last, we change from `logOR <- sum(log(counts[c(1,4)]-counts[2:3]))` to `logOR <- log(counts[1]*counts[4]/(counts[2]*counts[3]))`. And it works.
+
+## Problem 2
+
+For this problem your goal is to understand what the function `OR_power` is doing.  Explain why it (once fixed) indeed implements a Monte Carlo simulation to approximate $P^*(R_c=1)$.  Add comments to the code of `OR_power` explaining what each line does.
+
+See the comments above.
+
+## Problem 3
+
+Once you have fixed the bug in `OR_power`, profile the `mapply` part of the following code, which computes the power for different combinations of `theta1` and sample size `n`
+
+### solution
+```{r,eval=TRUE}
+scenarios <- expand.grid(theta1=c(.1,.5,2,5,10), n=c(20,50,100,250,500))
+
+## profiling
+tmp <- tempfile()
+Rprof(tmp)
+
+scenarios$power <- mapply( OR_power, scenarios$theta1, scenarios$n, nsim=10000)
+
+Rprof(NULL)
+prof_results <- summaryRprof(tmp)
+head(prof_results)
+
+```
+Report which functions are taking the most time, and devise a strategy for making the code run faster.  Create a function `OR_power_fast` that runs more efficiently (keep the original `OR_power` for next problem).  Note: you may also  modify/combine the functions `joint_probs` and `OR_CI` if you need/want to.
+
+### solution
+```{r,eval=TRUE}
+# From the profiling result, c() takes the longest time. 
+
+# Strategy: 
+# Since c() is the most expensive function in time, we can consider to  modify it.
+# In function OR_power(),we need to calculate the mean of R_c.
+# However, we don't have to append R_c each time in a loop.
+# We can simply count the R_c that is rejected by null hypothesis
+# and devided it by nsim at the end without using c(). 
+
+
+# Here is a faster version of OR_power()
+
+OR_power_fast <- function(theta1, n, theta0=1, alpha=.05, pX1=.5, pY1=.5, nsim=1000, c0=0.5){
+  R_c <- 0
+  for(i in 1:nsim){
+    CI <- OR_CI(rmultinom(1,size=n,prob=joint_probs(theta1,pX1,pY1)), alpha, c0)
+    if(theta0 < CI[1] || theta0 > CI[2]){
+      R_c <- R_c+1
+    }
+  }
+  R_c/nsim
+}
+
+
+
+
+```
+
+## Problem 4
+Compare the performance of `OR_power` and `OR_power_fast` using microbenchmarking.
+
+### solution
+```{r,eval=TRUE}
+
+
+library(microbenchmark)
+microbenchmark(
+  original = OR_power(theta1=2, n=100, theta0=1),   
+  faster = OR_power_fast(theta1=2, n=100, theta0=1),
+  times = 1000L 
+) 
+
+# From the output, we can see that OR_power_fast performs better in saving time. 
+```
+
+## Problem 5
+
+In this problem you will build a sample size calculator which outputs the minimal sample size required to achieve a desired power of the test described above under an alternative hypothesis.  To do this, create a function `OR_sampsize` that takes in the following input:
+
+- `theta0` : odds ratio in null hypothesis
+
+- `theta1` : odds ratio in alternative hypothesis
+
+- `power` : desired minimum power of the test under alternative hypothesis
+
+- `alpha` : significance level of the test
+
+- `pX1` : $P(X=1)$ 
+
+- `pY1` : $P(Y=1)$ 
+
+- `c0` : small number, as before 
+
+- `nsim` : number of repetitions of Monte Carlo simulation
+
+### solution 
+```{r, eval=TRUE}
+# this function returns the minimum number of sample size to reach the power
+OR_sampsize <- function(theta0=1, theta1=1.5, power=0.8, alpha=0.05, pX1=0.5, pY1=0.5, 
+                        c0=0.5, nsim=10000){
+  # call the recursive function with lower and upper bound initialized, 
+  # other parameters are inherited from the OR_sampsize function
+  recur(nl = 10, nh = 20000, theta0=theta0, theta1=theta1, power = power, alpha=alpha, 
+        pX1=pX1, pY1=pY1, c0=c0, nsim=nsim)
+}
+
+# this is the recursive function using a dichotomy approach to find the correct sample size
+# the function takes in additional parameters: lower and upper bound
+recur <- function(nl, nh, theta0, theta1, power, alpha, pX1, pY1, c0, nsim){
+  n.med = round((nh + nl)/2, 0) #calculate the mean value
+  
+  p <- OR_power_fast(n = n.med, theta0=theta0, theta1=theta1, alpha=alpha, pX1=pX1, pY1=pY1, 
+                c0=c0, nsim=nsim) #calculate the power
+  
+  # return n if the rounded power (to 1 decimal point) is same as required
+  if(round(p, 1) == power) return(n.med) 
+  
+  # search the smaller half of the range if the calculated power bigger than desired
+  else if (p > power){ 
+    n.high = n.med
+    n.low = nl
+    return(recur(nl = n.low, nh = n.high, theta0=theta0, theta1=theta1, power = power, 
+                 alpha=alpha, pX1=pX1, pY1=pY1, c0=c0, nsim=nsim))
+    # search the larger half of the range if the calculated power bigger than desired
+  } else if (p < power) { 
+    n.low = n.med
+    n.high = nh
+    return(recur(nl = n.low, nh = n.high, theta0=theta0, theta1=theta1, power = power, 
+                 alpha=alpha, pX1=pX1, pY1=pY1, c0=c0, nsim=nsim))
+  }   
+}  
+
+OR_sampsize(theta0=1, theta1=1.5, power=0.8, alpha=0.05, pX1=0.5, pY1=0.5, c0=0.5, nsim=10000)
+OR_sampsize(theta0=1, theta1=2, power=0.8, alpha=0.05, pX1=0.5, pY1=0.5, c0=0.5, nsim=10000)
+OR_sampsize(theta0=1, theta1=1.5, power=0.9, alpha=0.05, pX1=0.5, pY1=0.5, c0=0.5, nsim=10000)
+
+OR_sampsize(theta0=2, theta1=1, power=0.8, alpha=0.01, pX1=0.2, pY1=0.5, c0=1, nsim=10000)
+OR_sampsize(theta0=2, theta1=0.5, power=0.8, alpha=0.01, pX1=0.2, pY1=0.5, c0=1, nsim=10000)
+OR_sampsize(theta0=2, theta1=1, power=0.9, alpha=0.01, pX1=0.2, pY1=0.5, c0=1, nsim=10000)
+
+# The results show that larger difference between theta0 and theta1 lead to a smaller 
+# minimum sample size with  every other parameters controlled. A larger power leads to 
+# a larger minimum sample size.
+```
+

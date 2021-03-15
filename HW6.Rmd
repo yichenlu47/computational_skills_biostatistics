@@ -1,0 +1,169 @@
+---
+title: "Homework 6"
+subtitle: "BIOST 561: Computational Skills for Biostatistics I"
+author: "Instructor: Mauricio Sadinle"
+date: "Spring 2020"
+urlcolor: blue
+output: pdf_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=FALSE)
+```
+
+Submit your solutions via Canvas before 6:00pm on Wednesday May 20 2020.  Work in groups of two or three people to prepare your solutions.  Note that on Canvas there are some initial groups, called 'Homework 6 Groups,' but you should feel free to modify these if you prefer another group configuration.   
+
+## Format for solutions
+
+Submit your solutions as a pdf prepared using [RMarkdown](https://rmarkdown.rstudio.com/).  The source .Rmd file for this pdf is available on Canvas in case you want to use it as the basis for your solutions. 
+
+*Please make sure to submit a well-formatted report.  For example, clearly separate questions from answers, and add your names as the authors of the document!*
+
+
+# Problem 1
+
+Your goal for this problem is to reproduce AND UNDERSTAND the code contained in the RSQLite vignette:
+
+https://cran.r-project.org/web/packages/RSQLite/vignettes/RSQLite.html
+
+Your solution for this problem should be the code in that vignette but with comments, that is, explain what each line of code is doing.  This includes explaining in your own words what each function does.  Yes, you'll have to read the help page of each of the functions.  Motivation: you'll be able to put in your CV under computational skills:  "Connecting R with SQL," or something like that.  Highly marketable!
+
+## Solution
+```{r, eval = TRUE}
+# load the library
+library(DBI)
+
+
+## Creating a new database
+# connect to a database management system (DBMS), create new SQLite databse "my-db.sqlite"
+# and assign to object mydb
+mydb <- dbConnect(RSQLite::SQLite(), "my-db.sqlite")
+
+# close connections and free resources
+dbDisconnect(mydb)
+
+# delete the directory 
+unlink("my-db.sqlite")
+
+# connect to a tempoerary database
+mydb <- dbConnect(RSQLite::SQLite(), "")
+# close connections
+dbDisconnect(mydb)
+
+
+## Loading data
+# connect to a tempoerary database and assign to mydb
+mydb <- dbConnect(RSQLite::SQLite(), "")
+# write data frame mtcart to SQLite database mydb
+dbWriteTable(mydb, "mtcars", mtcars)
+# also write data frame iris to SQLite database mydb
+dbWriteTable(mydb, "iris", iris)
+# list remote tables saved in SQLite database mydb
+dbListTables(mydb)
+
+
+## Queries
+# retrieve the first 5 rows (include all columns) in data frmae mtcars saved in SQLite 
+# database mydb
+dbGetQuery(mydb, 'SELECT * FROM mtcars LIMIT 5')
+
+# retrieve rows (include all columns) that had column Sepal.Length with value < 4.6 in data 
+# frame iris saved in SQLite database mydb
+dbGetQuery(mydb, 'SELECT * FROM iris WHERE "Sepal.Length" < 4.6')
+
+# retrieve rows (include all columns) that had column Sepal.Length with value < 4.6 in data 
+# frame iris saved in SQLite database mydb
+# pass values using the param argument: This query runs 1 time and is for parameter 4.6. 
+# The resulting rows are put into a data frame. this method is safer compared to the previous 
+# one in terms of preventing inserting SQL that could damage the databse
+dbGetQuery(mydb, 'SELECT * FROM iris WHERE "Sepal.Length" < :x', 
+  params = list(x = 4.6))
+
+
+## Batched queries
+# submit query of selecting everything from data frame mtcars in databse connection mydb (but
+# does not extract records) and assign this operation to rs as an object
+rs <- dbSendQuery(mydb, 'SELECT * FROM mtcars')
+
+# run the following code only if the operation rs has not been completed (in this case, when 
+# there's still things to retrieve from data frame mtcars)
+while (!dbHasCompleted(rs)) { 
+  # retrieve the next 10 row from mtcars (when available, otherwise retrieve whatever's left)  
+  # and return the results as a data frame and assign to df
+  df <- dbFetch(rs, n = 10)
+  # print the number of rows of df
+  print(nrow(df))
+}
+
+# frees all resources (memories) releted to rs 
+dbClearResult(rs) 
+
+
+## Multiple parameterised queries
+# submit request to retrieve rows (include all columns) that had column Sepal.Length with 
+# value < x in data frame iris saved in SQLite database mydb and save this operation to object 
+# rs
+rs <- dbSendQuery(mydb, 'SELECT * FROM iris WHERE "Sepal.Length" < :x')
+# 4.5 is passed to the parameter x in the request stored as rs
+dbBind(rs, params = list(x = 4.5))
+# execute rs, retrieve available rows from iris with Sepal.Length < 4.5 as a data frame and 
+# return the number of rows of the results 
+nrow(dbFetch(rs))
+
+# 4 is passed to the parameter x in the request stored as rs
+dbBind(rs, params = list(x = 4))
+# execute rs, retrieve available rows from iris with Sepal.Length < 4 as a data frame and 
+# return the number of rows of the results 
+nrow(dbFetch(rs))
+# frees all resources (memories) releted to rs 
+dbClearResult(rs)
+
+# submit request to retrieve rows (include all columns) that had column Sepal.Length with 
+# value equals to x in data frame iris saved in SQLite database mydb and save this operation 
+# to object rs
+rs <- dbSendQuery(mydb, 'SELECT * FROM iris WHERE "Sepal.Length" = :x')
+# pass values from 4, 4.1, 4.2, 4.3 and 4.4 to operation rs
+dbBind(rs, params = list(x = seq(4, 4.4, by = 0.1)))
+# execute the query rs 5 times, retrieve rows from iris withSepal.Length = 4, 4.1, 4.2, 4.3, 4.4 
+# respectively. combine all the resulting rows from the 5 queries into one data frame, and return 
+# the row number of the data frame 
+nrow(dbFetch(rs))
+# frees all resources (memories) releted to rs 
+dbClearResult(rs)
+
+
+## Statements
+# executes a query of deleting rows with Sepal.Length values < 4 from data frame iris and returns
+# the number of rows affected
+dbExecute(mydb, 'DELETE FROM iris WHERE "Sepal.Length" < 4')
+
+# create a query of deleting rows with Sepal.Length values < x from data frame iris and returns
+# the number of rows affected, store this query to object rs
+rs <- dbSendStatement(mydb, 'DELETE FROM iris WHERE "Sepal.Length" < :x')
+# pass values from 4.5 to operation rs
+dbBind(rs, params = list(x = 4.5))
+# executes the query stored in rs of deleting rows with Sepal.Length values < 4.5 from data frame 
+# iris and returns the number of rows affected
+dbGetRowsAffected(rs)
+# frees all resources (memories) releted to rs 
+dbClearResult(rs)
+```
+
+
+# Problem 2
+
+The codebook for the database used in class `2010_BSA_Carrier_PUF.csv` can be found here: 
+
+https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/BSAPUFS/Downloads/2010_Carrier_Data_Dictionary.pdf
+
+
+For more information see here:
+
+https://www.cms.gov/Research-Statistics-Data-and-Systems/Downloadable-Public-Use-Files/BSAPUFS/Carrier_Line_Items.html
+
+In particular, note this limitation: 
+
+"*as beneficiary identities are not provided, it is not possible to link claims that belong to the same beneficiary in the CMS BSA Carrier Line Items PUF. It is also not possible to link line items that belong to the same claim.*" 
+
+Nevertheless, let's assume it is meaningful to study the distribution of "CAR_HCPCS_PMT_AMT" (find out what this is) for the different combinations of gender and age groups.  Work under the assumption that you cannot load the whole column "CAR_HCPCS_PMT_AMT" from `2010_BSA_Carrier_PUF.csv` into R, and so that you have to load the chunks of "CAR_HCPCS_PMT_AMT" corresponding to combinations of age and gender, one by one.  For each of such chunks, store the frequencies of the different values (of the variable "CAR_HCPCS_PMT_AMT").  Combine all of these results into a data frame containing columns for gender, age group, values of the variable "CAR_HCPCS_PMT_AMT", and corresponding frequencies of such values. You can use the functions covered in class from the package `sqldf` or functions from `RSQLite`,  or any other option that allows you to load chunks of the data file.  (You might need to do some extra reading on SQL to construct the statements you need).
+

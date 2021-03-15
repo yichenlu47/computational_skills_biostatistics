@@ -1,0 +1,484 @@
+---
+title: "Homework 8"
+subtitle: "BIOST 561: Computational Skills for Biostatistics I"
+author: "Author: Yichen Lu"
+date: "Spring 2020"
+urlcolor: blue
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=TRUE, warning = FALSE)
+rm(list = ls())
+library(Rcpp) # library that call C++ from R
+library(bench)
+```
+
+Submit your solutions via Canvas before 6:00pm on Wednesday June 3 2020.  **For this homework I am asking you to submit your  solutions individually.**   You should still feel free to talk with classmates about this homework, but the solutions should be your own. 
+
+Submit your solutions as a pdf prepared using [RMarkdown](https://rmarkdown.rstudio.com/).  The source .Rmd file for this pdf is available on Canvas in case you want to use it as the basis for your solutions. 
+
+**Please make sure to submit a well-formatted report.  For example, add your name as the author of the document.**
+
+## Problem 
+
+Your goal for this homework is to read Sections 25.1 -- 25.6 of Hadley Wickham's Advanced R book (2nd Edition, https://adv-r.hadley.nz/rcpp.html), reproduce AND UNDERSTAND the code contained in those Sections. Your solution for this problem should be the code in those Sections but with your comments, that is, explain what each line of code is doing (you may skip the book's Exercises sections).  This also includes explaining in your own words what the C++ code presented in those Sections does.  
+
+**Note:** before Section 25.2.5, the C++ code that Wickham presents is written inline and compiled using `cppFunction`, but after Section 25.2.5, Wickham presents code as it would look in a `.cpp` file, which needs to be sourced into R with `sourceCpp`.  
+
+In order to reproduce his code of Sections 25.1 -- 25.6, in principle you'd have to create a `.cpp` file for each of his examples, and then source them into R.  DO NOT do this, as it would be quite cumbersome.  Instead of sourcing his code examples into R, simply modify them to be run inline with `cppFunction`. 
+
+For example, if Wickham presents an example like:
+```
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+int add(int x, int y, int z) {
+int sum = x + y + z;
+return sum;
+}
+```
+simply change it to:
+```{r}
+cppFunction(
+  'int add(int x, int y, int z) {
+  int sum = x + y + z;
+  return sum;
+}')
+```
+to reproduce it in your document (this will also make your `.Rmd` self-contained).  
+
+Finally, don't forget to add comments, meaning that your code in your solutions should look more like:
+```{r}
+cppFunction(
+  'int add(int x, int y, int z) { // define function add with input integers, returning integer
+  int sum = x + y + z;          // define sum as integer and assign its value
+  return sum;                   // function returns sum, which is integer
+}')
+```
+
+
+
+## Solution 
+### 25.1 - 25.2
+```{r}
+cppFunction('int add(int x, int y, int z) { // define function add with input integers, 
+// returning integer
+  int sum = x + y + z;  // define sum as integer and assign its value
+  return sum; // function returns sum (integer)
+}')
+
+one <- function() 1L
+cppFunction('int one() { // define function one with empty input
+  return 1; // function returns 1 (integer)
+}')
+
+signR <- function(x) {
+  if (x > 0) {
+    1
+  } else if (x == 0) {
+    0
+  } else {
+    -1
+  }
+}
+cppFunction('int signC(int x) {  // define function signC with input integer, returning integer
+  if (x > 0) {
+    return 1; // function returns 1 (integer) if input positive integer
+  } else if (x == 0) {
+    return 0; // function returns 0 (integer) if input 0
+  } else {
+    return -1; // function returns -1 (integer) if input negative integer
+  }
+}')
+
+sumR <- function(x) {
+  total <- 0
+  for (i in seq_along(x)) {
+    total <- total + x[i]
+  }
+  total
+}
+cppFunction('double sumC(NumericVector x) { // define function sumC with input 
+// numeric vector, returning double
+  int n = x.size(); // find the length (integer) of the vector and assign to n
+  double total = 0; // define total to be 0 (double)
+  for(int i = 0; i < n; ++i) {  // initialize i to be 0 (integer), iterate if i < n and 
+  // terminate if not, increase i by 1 after each iteration
+    total += x[i]; // add ith value in the input numeric vector to total 
+  }
+  return total; // function returns total (double)
+}')
+
+## benchmark to compare the running time
+x <- runif(1e3)  
+bench::mark(
+  sum(x),
+  sumC(x),
+  sumR(x)
+)[1:6]
+
+pdistR <- function(x, ys) {
+  sqrt((x - ys) ^ 2)
+}
+cppFunction('NumericVector pdistC(double x, NumericVector ys) { // define function pdistC 
+// with input double and input numeric vector, returning numeric vector
+  int n = ys.size(); // find the length (integer) of the vector and assign to n
+  NumericVector out(n); // create a new numeric vector of length n
+  for(int i = 0; i < n; ++i) { // initialize i to be 0 (integer), iterate if i < n and 
+  // terminate if not, increase i by 1 after each iteration
+    out[i] = sqrt(pow(ys[i] - x, 2.0)); // squared and then take the square root of difference
+    // between ith from input numeric vector and x and assign the result to ith position in 
+    // the new numeric vector
+  }
+  return out; // function returns out (numeric vector double)
+}')
+
+## benchmark to compare the running time
+y <- runif(1e6)
+bench::mark(
+  pdistR(0.5, y),
+  pdistC(0.5, y)
+)[1:6]
+
+cppFunction('double meanC(NumericVector x) { // define function meanC with input numeric 
+// vector, returning double
+  int n = x.size(); // find the length (integer) of the vector and assign to n
+  double total = 0; // define total to be 0 (double)
+  for(int i = 0; i < n; ++i) { // initialize i to be 0 (integer), iterate if i < n and  
+  // terminate if not, increase i by 1 after each iteration
+    total += x[i];  // add ith value in the input vector (double) to total 
+  }
+  return total / n; // function returns mean (double)
+}')
+```
+
+### 25.3
+```{r}
+cppFunction('double mpe(List mod) { // define function mpe with input list, returning double
+  // if (!mod.inherits("lm")) stop("Input must be a linear model"); // only proceed if 
+  // the input is a linear model
+
+  NumericVector resid = as<NumericVector>(mod["residuals"]); // assign "residuals" from 
+  // the input to numeric vector resid
+  NumericVector fitted = as<NumericVector>(mod["fitted.values"]);  // assign "fitted.values"
+  // from the input to numeric vector fitted
+
+  int n = resid.size(); // find the length (integer) of the vector resid and assign to n
+  double err = 0; // initialize err to be 0 (double)
+  for(int i = 0; i < n; ++i) { // initialize i to be 0 (integer), iterate if i < n and  
+  // terminate if not, increase i by 1 after each iteration
+    err += resid[i] / (fitted[i] + resid[i]); // add ith value from vector fitted and vector 
+    // resid and add to err
+  }
+  return err / n; // function returns mean percentage error from the linear model (double)
+}')
+
+cppFunction('RObject callWithOne(Function f) { // define function callWithOne with input a R 
+// function, returning R object
+  return f(1);  // function returns the input function with 1 plugged into the input function
+}')
+callWithOne(function(x) x + 1) # the input is function (x) x + 1 and function callWithOne 
+# returns f(1) = 1 + 1 = 2
+callWithOne(paste) # the input is function paste and function callWithOne returns string "1"
+
+cppFunction('NumericVector attribs() { // define function attribs with empty input, returning 
+// numeric vector
+  NumericVector out = NumericVector::create(1, 2, 3);  // create an R vector and assign to 
+  // numeric vector out
+
+  out.names() = CharacterVector::create("a", "b", "c"); // update the name of the numeric 
+  // vector out 
+  out.attr("my-attr") = "my-value"; // set the attributes of out as "my-value"
+  out.attr("class") = "my-class";  // set the class of out as "my-class"
+
+  return out; // function returns numeric vector out
+}')
+```
+
+
+### 25.4
+```{r}
+cppFunction('List scalar_missings() { // define function scalar_missings with empty input, 
+// returning list
+  int int_s = NA_INTEGER;  // initialize int_s (integer) to be missing 
+  String chr_s = NA_STRING; // initialize chr_s (string) to be missing 
+  bool lgl_s = NA_LOGICAL; // initialize lgl_s (booleen) to be missing and it will be default 
+  // to TRUE
+  double num_s = NA_REAL; // initialize num_s (double) to be missing 
+  return List::create(int_s, chr_s, lgl_s, num_s); // the function returns a list made  
+  // up of the 4 elements initialzied above
+}')
+str(scalar_missings())
+
+# any logical expression that involves a NAN always evaluates as FALSE
+evalCpp("NAN == 1")
+evalCpp("NAN < 1")
+evalCpp("NAN > 1")
+evalCpp("NAN == NAN")
+
+# combine NAN with booleen will evaluate differently
+evalCpp("NAN && TRUE")
+evalCpp("NAN || FALSE")
+
+# numeric operations with NAN will always return NAN
+evalCpp("NAN + 1")
+evalCpp("NAN - 1")
+evalCpp("NAN / 1")
+evalCpp("NAN * 1")
+
+cppFunction('List missing_sampler() { // define function missing_sampler with empty input, 
+// returning list
+  return List::create( // function create and return a list containing the following
+    NumericVector::create(NA_REAL), // missing numeric vector 
+    IntegerVector::create(NA_INTEGER),  // missing integer vector
+    LogicalVector::create(NA_LOGICAL), // missing booleen vector
+    CharacterVector::create(NA_STRING) // missing character vector
+  );
+}')
+str(missing_sampler())
+```
+
+### 25.5
+```{r}
+cppFunction('double sum3(NumericVector x) { // define function sum3 with 
+// numeric vector input, returning double 
+  double total = 0; // initialize double total to be 0
+  NumericVector::iterator it; // initialize an iterator it of numeric vector
+  for(it = x.begin(); it != x.end(); ++it) { // input a starting and ending iterator
+  // and loop to the end of input vector, increase iterator by 1 after each iteration
+    total += *it; // use the dereference operator * to get current value from the iterator
+    // and add it to total
+  }
+  return total; // function returns double total
+}')
+
+cppFunction('double sum4(NumericVector xs) { // define function sum4 with numeric vector input,
+  // returning double
+    double total = 0; // initialize double total to be 0
+    for(const auto &x : xs) { // use range-based for loops from C++11 to lop through input 
+    // vector xs
+      total += x; // add the element from vector xs to total
+    }
+    return total; // function returns double total
+}')
+
+cppFunction('#include <numeric> // include the header to use the accumulate function
+  double sum5(NumericVector x) { // define function sum5 with numeric vector input,
+  // returning double
+    return std::accumulate(x.begin(), x.end(), 0.0); //input a starting and an ending 
+    // iterator to accumulate () and set the initial value as 0.0 (double), and adds up 
+    // all the values inthe vector, function returns sum (double)
+}') 
+
+cppFunction('#include <algorithm> // include the header to operate on the iterators
+  IntegerVector findInterval2(NumericVector x, NumericVector breaks) { // define 
+  // function findInterval2 with two numeric vector input, returning integer vector
+  
+  IntegerVector out(x.size()); // initialize integer vector out with length of input
+  // numeric vector x
+
+  NumericVector::iterator it, pos; // initialize iterator it and pos of type numeric vector
+  IntegerVector::iterator out_it; // initialize iterator out_it of type integer vector
+
+  for(it = x.begin(), out_it = out.begin(); it != x.end(); ++it, ++out_it) { // start with
+  // the first and an ending iterator; loop through the iteration as long as it has not 
+  // reached the end of input integer vector x; at each iteration, increase it by 1 and increase 
+  // out_it by 1
+  
+    pos = std::upper_bound(breaks.begin(), breaks.end(), *it); // dereference the iterator 
+    // it and use upper_bound() to return the iterator that points at the upper bound for the 
+    // current value  corresponding to it based on the input numeric vector breaks, assign 
+    // the iterator to pos
+
+    *out_it = std::distance(breaks.begin(), pos); // find the position of iterator pos from 
+    // the begining iterator of input numeric vector breaks and assign the position to out_it, 
+    // return  dereferenced iterator
+  }
+  return out; //function returns integer vector out
+}')
+
+cppFunction('List rleC(NumericVector x) { // define funrtion rleC with numeric vector and
+// returning list
+  std::vector<int> lengths; // initialize vector and specify the type of object the vector  
+  // will contain to be integer, assign the vector to lengths
+  std::vector<double> values; // initialize vector and specify the type of object the vector  
+  // will contain to be double, assign the vector to values
+
+  // Initialise first value
+  int i = 0; // initialize integer i to be 0
+  double prev = x[0]; // access first elements of input vector x and assign to double prev
+  values.push_back(prev); // add new element prev to the end of the vector values
+  lengths.push_back(1); // add new element 1 to the end of the vector length
+
+  NumericVector::iterator it; // initialize a iteractor of numeric vector it
+  for(it = x.begin() + 1; it != x.end(); ++it) { // loop through the input vector x, increase
+  // the iterator by 1 at each iteration
+    if (prev == *it) { // if double prev is equivalent to the value corresponding to the 
+    // iterator it
+      lengths[i]++; // increase the value in the ith position of vector length by 1
+    } else { // otherwise
+      values.push_back(*it); // add new element (dereference the iterator it) to the end of  
+      // the vector values
+      lengths.push_back(1); // add new element 1 to the end of the vector length
+
+      i++; // increase i by 1
+      prev = *it; // obtain the value corresponding to the iterator it and ssign to prev
+    }
+  }
+
+  return List::create( // create and return a list with first element length correspond to  
+  // the number of times each element is repeated, and the second element values correspond 
+  // to the value
+    _["lengths"] = lengths, 
+    _["values"] = values
+  );
+}')
+
+cppFunction('LogicalVector duplicatedC(IntegerVector x) { // define function duplicatedC 
+// with an integer vector input and returning logical vector
+  std::unordered_set<int> seen; // initialize seen, an unordered set of type integer 
+  int n = x.size(); // assign the length of itneger vector x to integer n
+  LogicalVector out(n); // initialize a logical vector out with length n
+
+  for (int i = 0; i < n; ++i) { // start with 0 and iterate until i is no longer smaller than 
+  // input x and increase "i by 1 at each iteration
+    out[i] = !seen.insert(x[i]).second; // insert.second returns a booleen indicating if ith
+    // value from input vector x was a new addition to the vector seen; if true, add false 
+    // (indicating no duplicate yet) to ith position in vector out; otherwise add true to ith
+    // position in vector out
+  }
+
+  return out; // function returns logical vector out
+}')
+
+cppFunction('std::map<double, int> tableC(NumericVector x) { // define function table C 
+// with numeric vector 
+// input x and returns map with value of type double and key of integer
+  std::map<double, int> counts; // initialize a map coutns with value of type double and 
+  // key of type integer
+  int n = x.size(); // initialize integer i to be 0
+  for (int i = 0; i < n; i++) { // start with 0 and iterate n times, increase i at each 
+  // iteration
+    counts[x[i]]++; // find the ith element from input vector x and find the corresponding 
+    // value in map counts with such key x[i], and increase this value by 1
+  }
+  return counts; // return map counts
+}')
+```
+
+
+### 25.6
+```{r, eval = FALSE}
+# generate a matrix of numbers in R
+gibbs_r <- function(N, thin) {
+  mat <- matrix(nrow = N, ncol = 2)
+  x <- y <- 0
+  for (i in 1:N) {
+    for (j in 1:thin) {
+      x <- rgamma(1, 3, y * y + 4)
+      y <- rnorm(1, 1 / (x + 1), 1 / sqrt(2 * (x + 1)))
+    }
+    mat[i, ] <- c(x, y)
+  }
+  mat
+}
+cppFunction('NumericMatrix gibbs_cpp(int N, int thin) { // define function gibbs_cpp with two 
+//integer input, returning numeric matrix
+
+  NumericMatrix mat(N, 2); // initialize a numeric matrix of N row and 2 columns
+  double x = 0, y = 0; // initialize two doubles and set them to 0
+
+  for(int i = 0; i < N; i++) { // first layer of the loop, start with integer 0 and iterate
+  //till i is no longer smaller than input integer N and increase i by 1 at each iteration
+  
+    for(int j = 0; j < thin; j++) { // second layer of the loop, start with integer 0 and 
+    //iterate till j is no longer smaller than input integer thin and increase j by 1 at each 
+    //iteration
+      x = rgamma(1, 3, 1 / (y * y + 4))[0]; // generate x from a gamma distribution starting 
+      //rate y = 0
+      y = rnorm(1, 1 / (x + 1), 1 / sqrt(2 * (x + 1)))[0]; // generate y from a normal 
+      // distributionstarting with x  = 0 in mean and variance; then update the value of x 
+      // based on the y and update the value of y based on the new x, do so for thin times 
+    }
+    mat(i, 0) = x; // assign x to ith row and first column in matrix mat
+    mat(i, 1) = y; // assign y to ith row and second column in matrix mat
+  }
+  return(mat); // function returns numeric matrix mat
+}')
+## benchmark to compare the running time
+bench::mark(
+  gibbs_r(100, 10),
+  gibbs_cpp(100, 10),
+  check = FALSE
+)
+
+# predict model response based on three inputs in R
+vacc1a <- function(age, female, ily) {
+  p <- 0.25 + 0.3 * 1 / (1 - exp(0.04 * age)) + 0.1 * ily
+  p <- p * if (female) 1.25 else 0.75
+  p <- max(0, p)
+  p <- min(1, p)
+  p
+}
+# extend function vacc1a to a vector in R
+vacc1 <- function(age, female, ily) {
+  n <- length(age)
+  out <- numeric(n)
+  for (i in seq_len(n)) {
+    out[i] <- vacc1a(age[i], female[i], ily[i])
+  }
+  out
+}
+# combine vacc1a and vacc1 by vectorizing the function in R
+vacc2 <- function(age, female, ily) {
+  p <- 0.25 + 0.3 * 1 / (1 - exp(0.04 * age)) + 0.1 * ily
+  p <- p * ifelse(female, 1.25, 0.75)
+  p <- pmax(0, p)
+  p <- pmin(1, p)
+  p
+}
+cppFunction('
+double vacc3a(double age, bool female, bool ily){ // define function vacc3a with one double
+// input and two booleen inputs, returning double
+  double p = 0.25 + 0.3 * 1 / (1 - exp(0.04 * age)) + 0.1 * ily; // assign the value to p
+  // (double) based on the input age and ily
+  p = p * (female ? 1.25 : 0.75); // update the value of p (double) based on input female
+  p = std::max(p, 0.0); // update p to be the max value between p and double 0.0
+  p = std::min(p, 1.0); // update p to be the min value between p and double 1.0
+  return p;// function returns double p
+}
+  
+NumericVector vacc3(NumericVector age, LogicalVector female, LogicalVector ily) {
+// define function vacc3 with one numeric vector and two logical vectors, returning numeric 
+// vector
+  int n = age.size(); // initialize integer n to be the length of input vector age
+  
+  NumericVector out(n); // initialize numeric vector out to have n elements
+  for(int i = 0; i < n; ++i) { // start with integer i = 0 and iterate until i is no longer 
+  // smaller than input n, increase i by 1 at each iteration
+  
+    out[i] = vacc3a(age[i], female[i], ily[i]); // apply function vacc3a to ith position in 
+    // each of input vector and assign the result (double) to ith position in numeric vector
+    // our
+  }
+  return out; // function returns numeric vector out
+}')
+# generate simulation data
+n <- 1000
+age <- rnorm(n, mean = 50, sd = 10)
+female <- sample(c(T, F), n, rep = TRUE)
+ily <- sample(c(T, F), n, prob = c(0.8, 0.2), rep = TRUE)
+# stop if the results are not equivalent from any of the three function
+stopifnot(
+  all.equal(vacc1(age, female, ily), vacc2(age, female, ily)),
+  all.equal(vacc1(age, female, ily), vacc3(age, female, ily))
+)
+## benchmark to compare the running time
+bench::mark(
+  vacc1 = vacc1(age, female, ily),
+  vacc2 = vacc2(age, female, ily),
+  vacc3 = vacc3(age, female, ily)
+)
+```
